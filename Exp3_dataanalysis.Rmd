@@ -1,0 +1,138 @@
+---
+title: "Exp3"
+author: "AWN"
+date: "23/07/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r laod data, echo=FALSE}
+
+files = list.files(path = "./", pattern = "\\.csv$")
+subjects = c()
+
+for (file in 1:length(files)) {
+  a = read.csv(files[file], header = TRUE, sep = ',')
+  nam = paste("subject",file , sep = "_")
+  assign(nam, a)
+  #message(paste("Loaded data for: ", nam, sep = ""))
+  subjects = append(subjects, nam)
+}
+remove(a, file, nam)
+
+```
+
+```{r clean data, echo=FALSE}
+
+subject_info = data.frame(matrix(nrow = length(subjects), ncol = 5))
+
+
+for (s in 1:length(subjects)) {
+
+  tmp = eval(parse(text = subjects[s]))
+
+  subject_info[s,1] = tmp$participant[1]
+  subject_info[s,2] = as.character(tmp$date[1])
+  subject_info[s,3] = tmp$age[1]
+  subject_info[s,4] = as.character(tmp$gender[1])
+  subject_info[s,5] = tmp$frameRate[1]
+
+
+  colkeep = c("trialtype", "testtype", "trials.thisN", "trials.thisIndex", "fx_exA",
+  "fx_exB", "fx_exC", "fx_exD", "fx_exE", "fx_exF", "fx_test_right", "fx_test_left",
+  "response.keys", "response.corr", "response.rt", "numkey_rating.keys")
+
+  tmp = tmp[ , (names(tmp) %in% colkeep)]
+
+  # One value did not copy from design, bacause it was called NA (below code changes nothing, conside renaming all or just ingnore)
+
+  tmp$testtype = as.character(tmp$testtype)
+  tmp$testtype[tmp$trials.thisIndex == 6] = 'NA'
+  
+  # Save the data frame
+  assign(subjects[s], tmp)
+}
+
+remove(colkeep,s,tmp)
+names(subject_info) = c("ssid", "date", "age", "gender", "framerate")
+
+```
+
+
+```{r calc D2}
+
+mdf = data.frame(matrix(ncol = 3))
+names(mdf) = c('ss','condition','D2')
+
+for (s in 1:length(subjects)) {
+
+  tmp = eval(parse(text = subjects[s]))
+ 
+  tmp$DOld = NA
+  tmp$DNew = NA
+  tmp$D2 = NA
+  
+  keep = c('AB','AC','AD','AE','AF','BA','CA','DA','EA','FA')
+  
+  tmp = subset(tmp, tmp$testtype %in% keep)
+  
+  tmp$Condition = NA
+  
+  for (i in 1:nrow(tmp)){
+    
+    if (tmp$testtype[i] %in% c('AB','AC','AD','AE','AF')){
+      tmp$DNew[i] = tmp$fx_test_left[i]
+      tmp$DOld[i] = tmp$fx_test_right[i]
+      tmp$D2[i] = (tmp$DNew[i] - tmp$DOld[i]) / (tmp$DNew[i] + tmp$DOld[i])
+      tmp$Condition[i] = tmp$testtype[i]
+    } else {
+      tmp$DNew[i] = tmp$fx_test_right[i]
+      tmp$DOld[i] = tmp$fx_test_left[i]
+      tmp$D2[i] = (tmp$DNew[i] - tmp$DOld[i]) / (tmp$DNew[i] + tmp$DOld[i])
+      tstr = strsplit(tmp$testtype[i], "")[[1]]
+      tmp$Condition[i] = sprintf('%s%s', tstr[2], tstr[1])
+      
+    }
+    
+  }
+  
+  stmp = data.frame(matrix(ncol = 3, nrow = 5))
+  names(stmp) = names(mdf)
+  stmp$ss = subjects[s]
+  stmp$condition = c('AB','AC','AD','AE','AF')
+  
+  for (l in 1:nrow(stmp)){
+    stmp$D2[l] = mean(subset(tmp$D2, tmp$Condition == stmp$condition[l]))
+  }
+    
+  
+  mdf = rbind(mdf, stmp)  
+  
+  assign(subjects[s], tmp)
+
+}
+
+remove(stmp, tmp)
+
+mdf = subset(mdf, is.na(mdf$ss) == FALSE)
+```
+
+```{r analysis + plots}
+
+source('tt.os.R')
+source('tt.ps.R')
+
+
+
+library(ggplot2)
+library(jtools)
+
+plt = ggplot(data = plts, aes(x = Condition, y = D2)) + 
+  geom_point(aes(x = Condition, y = D2), size = 3, position=position_dodge(0.05)) +
+  geom_errorbar(aes(ymin=D2-SD, ymax=D2+SD), width=.1, position=position_dodge(0.05), inherit.aes = TRUE) +
+  theme_apa() + xlab('Condition') + ylab('Mean D2') + theme(text = element_text(size=12), axis.text = element_text(size = 12))
+ggsave('Exp06_Main.png', plot = last_plot(), scale = 1, dpi = 300)
+```
